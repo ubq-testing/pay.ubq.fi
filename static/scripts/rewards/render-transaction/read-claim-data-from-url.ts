@@ -36,6 +36,7 @@ export async function readClaimDataFromUrl(app: AppState) {
   } catch (e) {
     toaster.create("error", `${e}`);
   }
+
   if (window.ethereum) {
     try {
       app.signer = await connectWallet();
