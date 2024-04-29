@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - development
+      - wf-test
   pull_request:
     branches:
       - main
       - development
+      - wf-test
 
 env:
   FOUNDRY_PROFILE: ci
