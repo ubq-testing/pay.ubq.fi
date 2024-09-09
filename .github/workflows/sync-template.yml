@@ -1,9 +1,9 @@
 name: Sync branch to template
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '14 0 1 * *'
+  push:
+    branches:
+      - sync-wf-test
 
 jobs:
   sync:
