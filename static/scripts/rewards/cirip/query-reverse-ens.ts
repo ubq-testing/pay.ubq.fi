@@ -1,20 +1,36 @@
-import { reverseEnsInterface, UBIQUITY_RPC_ENDPOINT } from "./ens-lookup";
+import { ethers } from "ethers";
+import { useHandler } from "../web3/use-rpc-handler";
 
 export async function queryReverseEns(address: string) {
-  const data = reverseEnsInterface.encodeFunctionData("getNames", [[address.substring(2)]]);
+  // Try to get the ENS name from localStorage
+  const cachedEnsName = localStorage.getItem(address);
 
-  const response = await fetch(UBIQUITY_RPC_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "1",
-      method: "eth_call",
-      params: [{ to: "0x3671aE578E63FdF66ad4F3E12CC0c0d71Ac7510C", data: data }, "latest"],
-    }),
-  });
+  const handler = useHandler(1);
+  // todo fix .getFirstAvailableRpcProvider() can return wss:// in error
+  const provider = await handler.getFastestRpcProvider();
+  if (!provider) {
+    console.error("ENS lookup failed: No provider found");
+    return "";
+  }
+  const endpoint = provider.connection.url;
 
-  return response.text();
+  // Let's drop the old cache.
+  if (cachedEnsName && !cachedEnsName.trim().startsWith("{")) {
+    // If the ENS name is in localStorage, return it
+    return cachedEnsName;
+  } else {
+    // If the ENS name is not in localStorage, fetch it from the API
+    const web3Provider = new ethers.providers.JsonRpcProvider(endpoint);
+    const ensName = await web3Provider.lookupAddress(address);
+
+    if (ensName === null) {
+      console.error("ENS lookup failed: API request failed");
+      return null;
+    }
+
+    // Store the ENS name in localStorage for future use
+    localStorage.setItem(address, ensName);
+
+    return ensName;
+  }
 }

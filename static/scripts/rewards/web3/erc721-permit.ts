@@ -1,64 +1,78 @@
 import { JsonRpcProvider, TransactionResponse } from "@ethersproject/providers";
-import { ethers } from "ethers";
-import { nftRewardAbi } from "../abis/nftRewardAbi";
-import { renderTransaction } from "../render-transaction/render-transaction";
-import { Erc721Permit } from "../render-transaction/tx-type";
-import { claimButton, errorToast, loadingClaimButton, resetClaimButton, toaster } from "../toaster";
-import { connectWallet } from "./wallet";
+import { ERC721Permit } from "@ubiquibot/permit-generation/types";
+import { BigNumber, ethers } from "ethers";
+import { nftRewardAbi } from "../abis/nft-reward-abi";
+import { app } from "../app-state";
+import { toaster } from "../toaster";
+import { buttonController, getMakeClaimButton } from "../button-controller";
+import { connectWallet } from "./connect-wallet";
 
-export function claimErc721PermitHandler(permit: Erc721Permit, provider: JsonRpcProvider) {
-  return async function claimButtonHandler() {
+export function claimErc721PermitHandler(reward: ERC721Permit) {
+  return async function claimHandler() {
     const signer = await connectWallet();
     if (!signer) {
       return;
     }
 
-    if ((await signer.getAddress()).toLowerCase() !== permit.request.beneficiary) {
+    if ((await signer.getAddress()).toLowerCase() !== reward.beneficiary) {
       toaster.create("warning", `This NFT is not for you.`);
-      resetClaimButton();
       return;
     }
 
-    if (permit.request.deadline.lt(Math.floor(Date.now() / 1000))) {
+    if (BigNumber.from(reward.deadline).lt(Math.floor(Date.now() / 1000))) {
       toaster.create("error", `This NFT has expired.`);
-      resetClaimButton();
       return;
     }
 
-    const isRedeemed = await isNonceRedeemed(permit, provider);
+    const isRedeemed = await isNonceRedeemed(reward, app.provider);
     if (isRedeemed) {
       toaster.create("error", `This NFT has already been redeemed.`);
-      resetClaimButton();
       return;
     }
 
-    loadingClaimButton();
+    buttonController.showLoader();
     try {
-      const nftContract = new ethers.Contract(permit.nftAddress, nftRewardAbi, signer);
+      const nftContract = new ethers.Contract(reward.tokenAddress, nftRewardAbi, signer);
 
-      const tx: TransactionResponse = await nftContract.safeMint(permit.request, permit.signature);
+      const tx: TransactionResponse = await nftContract.safeMint(
+        {
+          beneficiary: reward.beneficiary,
+          deadline: reward.deadline,
+          keys: reward.erc721Request?.keys,
+          nonce: reward.nonce,
+          values: reward.erc721Request?.values,
+        },
+        reward.signature
+      );
       toaster.create("info", `Transaction sent. Waiting for confirmation...`);
       const receipt = await tx.wait();
+      buttonController.hideLoader();
       toaster.create("success", `Claim Complete.`);
+      buttonController.showViewClaim();
+      buttonController.hideMakeClaim();
       console.log(receipt.transactionHash); // @TODO: post to database
 
-      claimButton.element.removeEventListener("click", claimButtonHandler);
+      getMakeClaimButton().removeEventListener("click", claimHandler);
 
-      renderTransaction(provider, true).catch((error) => {
-        console.error(error);
-        toaster.create("error", `Error rendering transaction: ${error.message}`);
-      });
+      // app.nextPermit();
+      // renderTransaction().catch((error) => {
+      //   console.error(error);
+      //   toaster.create("error", `Error rendering transaction: ${error.message}`);
+      // });
     } catch (error: unknown) {
+      console.error(error);
       if (error instanceof Error) {
-        console.error(error);
-        errorToast(error, error.message ?? error);
-        resetClaimButton();
+        toaster.create("error", `Error claiming NFT: ${error.message}`);
+      } else if (typeof error === "string") {
+        toaster.create("error", `Error claiming NFT: ${error}`);
+      } else {
+        toaster.create("error", `Error claiming NFT: Unknown error`);
       }
     }
   };
 }
 
-export async function isNonceRedeemed(nftMint: Erc721Permit, provider: JsonRpcProvider): Promise<boolean> {
-  const nftContract = new ethers.Contract(nftMint.nftAddress, nftRewardAbi, provider);
-  return nftContract.nonceRedeemed(nftMint.request.nonce);
+async function isNonceRedeemed(reward: ERC721Permit, provider: JsonRpcProvider): Promise<boolean> {
+  const nftContract = new ethers.Contract(reward.tokenAddress, nftRewardAbi, provider);
+  return nftContract.nonceRedeemed(reward.nonce);
 }

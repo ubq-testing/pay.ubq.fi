@@ -1,45 +1,73 @@
+import { ERC20Permit, ERC721Permit } from "@ubiquibot/permit-generation/types";
 import { BigNumber, ethers } from "ethers";
-import { app } from ".";
-import { Erc20Permit, Erc721Permit } from "./tx-type";
+import { app, AppState } from "../app-state";
 
-export function shortenAddress(address: string): string {
+function shortenAddress(address: string): string {
   return `${address.slice(0, 10)}...${address.slice(-8)}`;
 }
 
+function formatLargeNumber(value: BigNumber, decimals: number): string {
+  const num = parseFloat(ethers.utils.formatUnits(value, decimals));
+
+  if (num >= 1_000_000_000_000_000) {
+    return "Unlimited"; // we can consider quintillion and above basically unlimited
+  } else if (num >= 1_000_000_000_000) {
+    return `${(num / 1_000_000_000_000).toFixed(1)}T`; // i.e: 1.2T
+  } else if (num >= 1_000_000_000) {
+    return `${(num / 1_000_000_000).toFixed(1)}B`; // i.e: 3.5B
+  } else if (num >= 1_000_000) {
+    return `${(num / 1_000_000).toFixed(1)}M`; // i.e: 1.2M
+  } else if (num >= 1_000) {
+    return `${(num / 1_000).toFixed(1)}K`; // i.e: 341.1K
+  } else {
+    return num.toFixed(2); // keep two decimals for smaller numbers
+  }
+}
+
 export function insertErc20PermitTableData(
-  permit: Erc20Permit,
+  app: AppState,
   table: Element,
   treasury: { balance: BigNumber; allowance: BigNumber; decimals: number; symbol: string }
 ): Element {
+  const reward = app.reward as ERC20Permit;
   const requestedAmountElement = document.getElementById("rewardAmount") as Element;
-  renderToFields(permit.transferDetails.to, app.currentExplorerUrl);
-  renderTokenFields(permit.permit.permitted.token, app.currentExplorerUrl);
+  renderToFields(reward.beneficiary, app.currentExplorerUrl);
+  renderTokenFields(reward.tokenAddress, app.currentExplorerUrl);
   renderDetailsFields([
-    { name: "From", value: `<a target="_blank" rel="noopener noreferrer" href="${app.currentExplorerUrl}/address/${permit.owner}">${permit.owner}</a>` },
+    { name: "From", value: `<a target="_blank" rel="noopener noreferrer" href="${app.currentExplorerUrl}/address/${reward.owner}">${reward.owner}</a>` },
     {
       name: "Expiry",
-      value: permit.permit.deadline.lte(Number.MAX_SAFE_INTEGER.toString()) ? new Date(permit.permit.deadline.toNumber()).toLocaleString() : undefined,
+      value: (() => {
+        const deadline = BigNumber.isBigNumber(reward.deadline) ? reward.deadline : BigNumber.from(reward.deadline);
+        return deadline.lte(Number.MAX_SAFE_INTEGER.toString()) ? new Date(deadline.toNumber()).toLocaleString() : undefined;
+      })(),
     },
-    { name: "Balance", value: treasury.balance.gte(0) ? `${ethers.utils.formatUnits(treasury.balance, treasury.decimals)} ${treasury.symbol}` : "N/A" },
-    { name: "Allowance", value: treasury.allowance.gte(0) ? `${ethers.utils.formatUnits(treasury.allowance, treasury.decimals)} ${treasury.symbol}` : "N/A" },
+    {
+      name: "Balance",
+      value: treasury.balance.gte(0) ? `${formatLargeNumber(treasury.balance, treasury.decimals)} ${treasury.symbol}` : "N/A",
+    },
+    {
+      name: "Allowance",
+      value: treasury.allowance.gte(0) ? `${formatLargeNumber(treasury.allowance, treasury.decimals)} ${treasury.symbol}` : "N/A",
+    },
   ]);
-  table.setAttribute(`data-claim-rendered`, "true");
+  table.setAttribute(`data-make-claim-rendered`, "true");
   return requestedAmountElement;
 }
 
-export function insertErc721PermitTableData(permit: Erc721Permit, table: Element): Element {
+export function insertErc721PermitTableData(reward: ERC721Permit, table: Element): Element {
   const requestedAmountElement = document.getElementById("rewardAmount") as Element;
-  renderToFields(permit.request.beneficiary, app.currentExplorerUrl);
-  renderTokenFields(permit.nftAddress, app.currentExplorerUrl);
-  const { GITHUB_REPOSITORY_NAME, GITHUB_CONTRIBUTION_TYPE, GITHUB_ISSUE_ID, GITHUB_ORGANIZATION_NAME, GITHUB_USERNAME } = permit.nftMetadata;
+  renderToFields(reward.beneficiary, app.currentExplorerUrl);
+  renderTokenFields(reward.tokenAddress, app.currentExplorerUrl);
+  const { GITHUB_REPOSITORY_NAME, GITHUB_CONTRIBUTION_TYPE, GITHUB_ISSUE_ID, GITHUB_ORGANIZATION_NAME, GITHUB_USERNAME } = reward.erc721Request?.metadata || {};
   renderDetailsFields([
     {
       name: "NFT address",
-      value: `<a target="_blank" rel="noopener noreferrer" href="${app.currentExplorerUrl}/address/${permit.nftAddress}">${permit.nftAddress}</a>`,
+      value: `<a target="_blank" rel="noopener noreferrer" href="${app.currentExplorerUrl}/address/${reward.tokenAddress}">${reward.tokenAddress}</a>`,
     },
     {
       name: "Expiry",
-      value: permit.request.deadline.lte(Number.MAX_SAFE_INTEGER.toString()) ? new Date(permit.request.deadline.toNumber()).toLocaleString() : undefined,
+      value: BigNumber.from(reward.deadline).lte(Number.MAX_SAFE_INTEGER.toString()) ? new Date(Number(reward.deadline)).toLocaleString() : undefined,
     },
     {
       name: "GitHub Organization",
@@ -57,9 +85,9 @@ export function insertErc721PermitTableData(permit: Erc721Permit, table: Element
       name: "GitHub Username",
       value: `<a target="_blank" rel="noopener noreferrer" href="https://github.com/${GITHUB_USERNAME}">${GITHUB_USERNAME}</a>`,
     },
-    { name: "Contribution Type", value: GITHUB_CONTRIBUTION_TYPE.split(",").join(", ") },
+    { name: "Contribution Type", value: GITHUB_CONTRIBUTION_TYPE?.split(",").join(", ") },
   ]);
-  table.setAttribute(`data-claim-rendered`, "true");
+  table.setAttribute(`data-make-claim-rendered`, "true");
   return requestedAmountElement;
 }
 
@@ -80,6 +108,7 @@ function renderDetailsFields(additionalDetails: { name: string; value: string | 
 function renderTokenFields(tokenAddress: string, explorerUrl: string) {
   const tokenFull = document.querySelector("#Token .full") as Element;
   const tokenShort = document.querySelector("#Token .short") as Element;
+
   tokenFull.innerHTML = `<div>${tokenAddress}</div>`;
   tokenShort.innerHTML = `<div>${shortenAddress(tokenAddress)}</div>`;
 
@@ -88,8 +117,12 @@ function renderTokenFields(tokenAddress: string, explorerUrl: string) {
 }
 
 function renderToFields(receiverAddress: string, explorerUrl: string) {
-  const toFull = document.querySelector("#To .full") as Element;
-  const toShort = document.querySelector("#To .short") as Element;
+  const toFull = document.querySelector("#rewardRecipient .full") as Element;
+  const toShort = document.querySelector("#rewardRecipient .short") as Element;
+
+  // if the for address is an ENS name neither will be found
+  if (!toFull || !toShort) return;
+
   toFull.innerHTML = `<div>${receiverAddress}</div>`;
   toShort.innerHTML = `<div>${shortenAddress(receiverAddress)}</div>`;
 

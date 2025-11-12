@@ -1,22 +1,25 @@
-import extraRpcs from "../lib/chainlist/constants/extraRpcs";
+import { execSync } from "child_process";
+import { config } from "dotenv";
 import esbuild from "esbuild";
-const typescriptEntries = [
-  "static/scripts/rewards/index.ts",
-  "static/scripts/audit-report/audit.ts",
-  "static/scripts/onboarding/onboarding.ts",
-  "static/scripts/key-generator/keygen.ts",
+import { appendFileSync, readFileSync, writeFileSync } from "fs";
+
+// CSS files in order
+const cssFiles: string[] = [
+  "static/styles/rewards/pay.css",
+  "static/styles/rewards/background.css",
+  "static/styles/toast.css",
+  "static/styles/rewards/claim-table.css",
+  "static/styles/rewards/gift-cards.css",
+  "static/styles/rewards/ubiquity-dollar.css",
+  "static/styles/rewards/media-queries.css",
+  "static/styles/rewards/light-mode.css",
 ];
-const cssEntries = ["static/styles/rewards/rewards.css", "static/styles/audit-report/audit.css", "static/styles/onboarding/onboarding.css"];
-export const entries = [...typescriptEntries, ...cssEntries];
 
-const allNetworkUrls: Record<string, string[]> = {};
-// this flattens all the rpcs into a single object, with key names that match the networkIds. The arrays are just of URLs per network ID.
+// Output bundles file
+const outputFilePath = "static/out/bundles.css";
 
-Object.keys(extraRpcs).forEach((networkId) => {
-  const officialUrls = extraRpcs[networkId].rpcs.filter((rpc) => typeof rpc === "string");
-  const extraUrls: string[] = extraRpcs[networkId].rpcs.filter((rpc) => rpc.url !== undefined).map((rpc) => rpc.url);
-  allNetworkUrls[networkId] = [...officialUrls, ...extraUrls];
-});
+const typescriptEntries = ["static/scripts/rewards/init.ts", "static/scripts/ubiquity-dollar/init.ts"];
+export const entries = [...typescriptEntries];
 
 export const esBuildContext: esbuild.BuildOptions = {
   sourcemap: true,
@@ -32,9 +35,27 @@ export const esBuildContext: esbuild.BuildOptions = {
     ".svg": "dataurl",
   },
   outdir: "static/out",
-  define: {
-    extraRpcs: JSON.stringify(allNetworkUrls),
-  },
+  entryNames: "[dir]", // Ensure the CSS is named bundles.css
+  define: createEnvDefines(["SUPABASE_URL", "SUPABASE_ANON_KEY"], {
+    commitHash: execSync(`git rev-parse --short HEAD`).toString().trim(),
+  }),
+  plugins: [
+    {
+      name: "css-bundle",
+      setup(build) {
+        build.onEnd((result) => {
+          // Clear the file first
+          writeFileSync(outputFilePath, "", "utf8");
+
+          // Concatenate each file into the bundles file
+          cssFiles.forEach((file) => {
+            const data = readFileSync(file, "utf8");
+            appendFileSync(outputFilePath, data, "utf8");
+          });
+        });
+      },
+    },
+  ],
 };
 
 esbuild
@@ -46,3 +67,22 @@ esbuild
     console.error(err);
     process.exit(1);
   });
+
+function createEnvDefines(environmentVariables: string[], generatedAtBuild: Record<string, unknown>): Record<string, string> {
+  const defines: Record<string, string> = {};
+  config();
+  for (const name of environmentVariables) {
+    const envVar = process.env[name];
+    if (envVar !== undefined) {
+      defines[name] = JSON.stringify(envVar);
+    } else {
+      throw new Error(`Missing environment variable: ${name}`);
+    }
+  }
+  for (const key in generatedAtBuild) {
+    if (Object.prototype.hasOwnProperty.call(generatedAtBuild, key)) {
+      defines[key] = JSON.stringify(generatedAtBuild[key]);
+    }
+  }
+  return defines;
+}
