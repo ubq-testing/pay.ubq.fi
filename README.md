@@ -1,154 +1,123 @@
-# [pay.ubq.fi](https://pay.ubq.fi)
+# Multi-Chain PermitAggregator Deployment
 
-A vanilla Typescript dApp for claiming Ubiquity Rewards. It also includes tools for generating and invalidating permits and can be used to claim both ERC20 and ERC721 tokens.
+This repository contains a script for deploying and verifying the PermitAggregator contract across multiple chains using CREATE2 for deterministic addresses, powered by Etherscan's V2 API for unified verification.
 
-## Setup Local Testing Environment
+## Supported Networks
 
-1. Install [Foundry](https://book.getfoundry.sh/getting-started/installation).
-2. Create a `.env` file in the project root with the following settings:
+- Ethereum (1)
+- Optimism (10)
+- BNB Smart Chain (56)
+- Gnosis Chain (100)
+- Polygon (137)
+- Base (8453)
+- Arbitrum One (42161)
+- Celo (42220)
+- Avalanche C-Chain (43114)
+- Blast (81457)
+- Zora (7777777)
 
-- These are the suggested default test environment variables that allow for local setup using the supplied yarn commands. If you want to produce or invalidate real on-chain permits you must change the below values to reflect the real permit information such as address, chain ID, private key and so on.
+## Setup
 
-  ```env
-  # Common variables
-  CHAIN_ID="31337"
-  FRONTEND_URL="http://localhost:8080"
-  UBIQUIBOT_PRIVATE_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-  RPC_PROVIDER_URL="http://127.0.0.1:8545"
-  PAYMENT_TOKEN_ADDRESS="0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d"
+1. Install dependencies:
+```bash
+bun install
+```
 
-  # Storing tx data is not required to test locally although you do need to fill these with valid values
-  # unless working on this feature specifically you won't need to build a supabase instance
-  SUPABASE_URL=https://<yourSupabaseInstance>.supabase.co # used for storing permit tx data
-  SUPABASE_ANON_KEY="...." # used for storing permit tx data
+2. Create a `.env` file using `.env.example` as a template:
+```bash
+cp .env.example .env
+```
 
-  # Variables depending on spender (bounty hunter)
-  AMOUNT_IN_ETH="50"
-  BENEFICIARY_ADDRESS="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+3. Configure your `.env` file with:
+- `DEPLOYER_PRIVATE_KEY`: Your deployer wallet's private key
+- `ETHERSCAN_API_KEY`: Your single Etherscan V2 API key (works for all supported chains)
 
-  # Legacy env vars (only used when invalidating **REAL** permits via /scripts/solidity/getInvalidateNonceParams.ts)
-  NONCE="0"
-  NONCE_SIGNER_ADDRESS="0x"
+---
+
+## Environment Variable Setup
+
+### Backend Environment
+
+- Place your backend `.env` file in the project root (`./.env`).
+- Use `.env.example` as a template:
+  ```bash
+  cp .env.example .env
   ```
+- **Required backend variables** (see `.env.example`):
+  - `SUPABASE_URL`: Supabase project URL (for backend API/database access)
+  - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key (for backend API/database access)
+  - `DEPLOYER_PRIVATE_KEY`: Private key for contract deployment scripts
+  - `ETHERSCAN_API_KEY`: Etherscan API key for contract verification
 
-3. Update values for wrangler variables to use Reloadly sandbox or production API in the `wrangler.toml` file.
+### Frontend Environment
 
-```
-[vars]
-USE_RELOADLY_SANDBOX = "true"
-RELOADLY_API_CLIENT_ID = "xxxxxxxxxxxxxxxxxx"
-RELOADLY_API_CLIENT_SECRET = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
+- Place your frontend `.env` file in the `frontend/` directory (`frontend/.env`).
+- Use `frontend/.env.example` as a template:
+  ```bash
+  cp frontend/.env.example frontend/.env
+  ```
+- **Required frontend variables** (see `frontend/.env.example`):
+  - `VITE_SUPABASE_URL`: Supabase project URL (for frontend)
+  - `VITE_SUPABASE_ANON_KEY`: Supabase anon/public key (for frontend)
+  - `VITE_RPC_URL`: Blockchain RPC endpoint for on-chain calls
 
-## Local Testing
+**Note:**
+All frontend environment variables **must** be prefixed with `VITE_` to be accessible in the app (Vite requirement).
 
-1. Set `.env` variables.
-2. Run `yarn`
-3. Run `yarn test:anvil` in terminal A and `yarn test:fund` in terminal B.
-4. In terminal B, run
+### About `.env.example` Files
 
-```
-yarn build
-yarn start
-```
+- `.env.example` and `frontend/.env.example` serve as templates for required environment variables.
+- Never commit real secrets to version control—only the example files.
+- Always copy the example file and fill in your actual values before running the app.
 
-4. A permit URL for both ERC20 and ERC721 will be generated.
-5. Open the generated permit URL from the console.
-6. Connect your wallet (import anvil accounts [0] & [1] into your wallet).
-7. Depending on your connected account, either the claim or invalidate button will be visible. The virtual card section will also display an available virtual card.
-8. To test ERC721 permits, deploy the `nft-rewards` contract from the [repository](https://github.com/ubiquity/nft-rewards).
+## Usage
 
-### Importing Anvil Accounts
-
-1. Open your wallet provider and select `import wallet` or `import account`.
-2. Obtain the private keys by running `anvil` or using the yarn command.
-3. Copy and paste the private keys into your wallet provider.
-
-### Expected Behavior
-
-#### Setup
-
-- A local blockchain instance will be created for testing.
-- The permit URL will be generated in the console. Ensure your console has enough space for the full URL.
-- Imported anvil accounts [0] & [1] can claim and invalidate permits.
-
-#### Claiming
-
-- Uses chain id `31337` and RPC provider `http://localhost:8545`.
-- Claiming involves transferring tokens from the signer's account to the beneficiary's account.
-- Signer must have signed a permit and have enough balance approved for the permit2 contract.
-
-#### Invalidating
-
-- Only the permit signer can invalidate it.
-- Invalidating calls `invalidateUnorderedNonces` on the `Permit2` smart contract.
-
-### Considerations
-
-- MetaMask is considered the default wallet provider.
-- Ensure correct network selection in your wallet (`http://localhost:8545` with chain id `31337`).
-- Use MetaMask Mobile Wallet Browser for mobile testing.
-
-### Errors
-
-- Clear transaction history in MetaMask if transactions hang after restarting the Anvil instance.
-- The test suite may show error toasts due to MetaMask spoofing.
-- Ensure `.env` is correctly configured and wallet provider network is correct if `Allowance` or `Balance` is `0.00`.
-- Always start the Anvil instance before using `yarn start` as permit generation requires an on-chain call to `token.decimals()`.
-
-### Troubleshooting virtual cards
-
-Virtual cards are subject to regulations and are not available for all countries. Moreover, each virtual card is available for specific amounts. If you are unable to see an available virtual card it is either because of your location or the amount of your permit.
-
-If you are not getting an available card, you can perform a few extra steps to get a virtual card for testing purposes. You can set the permit amount `AMOUNT_IN_ETH` to be 50 WXDAI in the `.env` file and mock your location as United States. To set your location to United States, you can follow one of the steps given below:
-
-- Use a USA VPN
-- Set your timezone to `Eastern Time (ET) New York` and block the ajax request to `https://ipinfo.io/json` so that your timezone is used to detect your location.
-
-One of these steps should get you a virtual card to try both on Reloadly sandbox and production. Please note that if you are minting a virtual card with a mock location on Reloadly production, you will get a redeem code but you may not able to use the card due to restrictions on the card, and there is no refund or replacement. Use your real location if you want to use the virtual card.
-
-If you are using mainnet with your local environments, you may want to change the `giftCardTreasuryAddress` to a wallet that you own in the file `shared/constants.ts`. It is the wallet where payments for the virtual cards are sent.
-
-## How to generate a permit2 URL using the script
-
-1. Admin sets `env.AMOUNT_IN_ETH` and `env.BENEFICIARY_ADDRESS` depending on a bounty hunter's reward and address
-2. Admin generates an offline permit URL via `npx tsx generate-permit2-url.ts`. Permit URL example:
-
-```
-http://localhost:8080?claim=eyJwZXJtaXQiOnsicGVybWl0dGVkIjp7InRva2VuIjoiMHgxMWZFNEI2QUUxM2QyYTYwNTVDOEQ5Y0Y2NWM1NWJhYzMyQjVkODQ0IiwiYW1vdW50IjoiMTAwMDAwMDAwMDAwMDAwMDAwMCJ9LCJub25jZSI6IjQ0NTUxMjc4NTQwNTU0MzM1MDQ2NzU2NDQ3MzM2MjI1ODg5OTE4OTY5MTczODQwNTU0Nzk2NzQ3MzQzMzAwOTg0NzU4MDIyMzY1ODczIiwiZGVhZGxpbmUiOiIxMTU3OTIwODkyMzczMTYxOTU0MjM1NzA5ODUwMDg2ODc5MDc4NTMyNjk5ODQ2NjU2NDA1NjQwMzk0NTc1ODQwMDc5MTMxMjk2Mzk5MzUifSwidHJhbnNmZXJEZXRhaWxzIjp7InRvIjoiMHhjODZhMDU5NzgwMThlMDRkNmVGMmFhNzNFNjlhNzMzQzA2ZDFmODllIiwicmVxdWVzdGVkQW1vdW50IjoiMTAwMDAwMDAwMDAwMDAwMDAwMCJ9LCJvd25lciI6IjB4NTRmNGEzNjQyMkRjOTZkMDg0OTY3NWMxZjBkZDJCOTZEMjc1NThFMiIsInNpZ25hdHVyZSI6IjB4NWI0OTE5MjhmYzI4MzBlMjZiNTViMWUxOWQ3YzVhMmVjNGE2ZmRhYWI1OGFiYjgyOWMwNmYzYzlkNGE4YTc5YjAzYmE2NjlkMDM4YjFmYzg5NjgzYzMyYjBiYTA5MzU2MDRjMGU1MDNjYWE3ZmY2ZWM2MDg2ZWZlYjY2MTY5MjQxYyJ9
+Deploy and verify on all chains:
+```bash
+bun run deploy-all
 ```
 
-3. Admin posts offline permit URL in issue comments (with the payment portal domain name)
-4. Bounty hunter opens permit URL, connects wallet and clicks a "withdraw" button to get a payment
+The script will:
+1. Calculate the expected contract address (same across all chains)
+2. Deploy to each chain using CREATE2
+3. Verify the contract source on each block explorer using the unified Etherscan V2 API
 
-## How to invalidate a permit2 nonce using the script
+## Required Funds
 
-This section describes how to invalidate the following [permit](https://github.com/ubiquity/ubiquity-dollar/issues/643#issuecomment-1607152588) (i.e. invalidate a permit2 nonce)
+Make sure your deployer address has enough native tokens on each chain:
 
-1. Setup `.env` file with the required env variables: `NONCE` (nonce number), `NONCE_SIGNER_ADDRESS` (i.e. the bot's wallet) and `RPC_PROVIDER_URL`. For this [permit URL](https://github.com/ubiquity/ubiquity-dollar/issues/643#issuecomment-1607152588) the `.env` file will look like this:
+- Ethereum (ETH): ~0.01 ETH
+- Optimism (ETH): ~0.001 ETH
+- BSC (BNB): ~0.005 BNB
+- Gnosis (xDAI): ~0.1 xDAI
+- Polygon (MATIC): ~1 MATIC
+- Base (ETH): ~0.001 ETH
+- Arbitrum (ETH): ~0.001 ETH
+- Celo (CELO): ~1 CELO
+- Avalanche (AVAX): ~0.1 AVAX
+- Blast (ETH): ~0.001 ETH
+- Zora (ETH): ~0.001 ETH
 
-```
-NONCE="9867970486646789738815952475601005014850694197864057371518032581271992954680"
-NONCE_SIGNER_ADDRESS="0xf87ca4583C792212e52720d127E7E0A38B818aD1"
-RPC_PROVIDER_URL="https://rpc.ankr.com/gnosis"
-```
+## Contract Verification
 
-2. Run `yarn nonce:get-invalidate-params`. You will get this output:
+The script automatically verifies the contract on each chain's block explorer using the Etherscan V2 API. You only need to provide a single API key in the `.env` file.
 
-```
-== Logs ==
-Is nonce used: false
---------------------
-Params for nonce invalidation via invalidateUnorderedNonces()
-wordPos: 38546759713464022417249814357816425839260524210406474107492314770593722479
-mask: 72057594037927936
+Explorer URLs:
 
-```
+- Ethereum: https://etherscan.io
+- Optimism: https://optimistic.etherscan.io
+- BSC: https://bscscan.com
+- Gnosis: https://gnosisscan.io
+- Polygon: https://polygonscan.com
+- Base: https://basescan.org
+- Arbitrum: https://arbiscan.io
+- Celo: https://celoscan.io
+- Avalanche: https://snowtrace.io
+- Blast: https://blastscan.io
+- Zora: https://explorer.zora.energy
 
-3. Open https://gnosisscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#writeContract and connect your wallet
-4. Call `invalidateUnorderedNonces()` with the `wordPos` and `mask` params you got on step 2
+## Etherscan V2 API Reference
 
-Notice that this examples uses gnosis chain for nonce invalidation. If you need to invalidate nonce on some other chain then:
-
-1. Set `RPC_PROVIDER_URL` on step 1 to the desired RPC chain provider
-2. On step 3 open UI for the desired chain
+- [Etherscan V2 Docs](https://docs.etherscan.io/)
+- Unified API key for all supported chains
+- Use `chainid` parameter to specify the target network for verification
